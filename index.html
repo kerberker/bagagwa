@@ -14,14 +14,12 @@
         @keyframes fall {
             to { transform: translateY(110vh) rotate(720deg); }
         }
-        /* Mobil için kritik: çift dokunuşta yakınlaştırma gecikmesini önler */
         .touch-manipulation {
             touch-action: manipulation;
         }
-        /* Oyunu sabit tutmak için mobilde aşağı çekerek yenilemeyi önler */
         body {
             overscroll-behavior-y: none;
-            background-color: #0f172a; /* slate-900 */
+            background-color: #0f172a;
         }
     </style>
 </head>
@@ -53,28 +51,15 @@
             const [cellPlacementTime, setCellPlacementTime] = useState({});
             const [generating, setGenerating] = useState(true);
 
-            // -- GİRİŞ EKRANI İÇİN YENİ STATE'LER --
-            const [introVisible, setIntroVisible] = useState(true); // Giriş ekranı DOM'da var mı?
-            const [introFading, setIntroFading] = useState(false);   // Giriş ekranı soluyor mu?
+            // -- GİRİŞ EKRANI STATE'LERİ --
+            const [introVisible, setIntroVisible] = useState(true);
+            const [introFading, setIntroFading] = useState(false);
 
-            // -- GİRİŞ EKRANI ZAMANLAYICISI --
             useEffect(() => {
-                // 4.5 saniye sonra solmaya başla
-                const fadeTimer = setTimeout(() => {
-                    setIntroFading(true);
-                }, 4500);
-
-                // 5.5 saniye sonra tamamen kaldır (1 saniye solma süresi tanıdık)
-                const removeTimer = setTimeout(() => {
-                    setIntroVisible(false);
-                }, 5500);
-
-                // Temizlik fonksiyonu (bileşen erken kapanırsa hataları önler)
-                return () => {
-                    clearTimeout(fadeTimer);
-                    clearTimeout(removeTimer);
-                };
-            }, []); // Boş dizi, sadece ilk açılışta çalışmasını sağlar
+                const fadeTimer = setTimeout(() => { setIntroFading(true); }, 4500);
+                const removeTimer = setTimeout(() => { setIntroVisible(false); }, 5500);
+                return () => { clearTimeout(fadeTimer); clearTimeout(removeTimer); };
+            }, []);
 
             // -- Benzersizlik Kontrolü --
             const countSolutions = (regionMap, size) => {
@@ -115,8 +100,6 @@
 
             const generateLevel = useCallback(() => {
                 setGenerating(true);
-                // Giriş ekranı varken arka planda oluşturma işlemini biraz geciktirebiliriz,
-                // ama şimdilik mevcut mantığı koruyalım.
                 setTimeout(() => {
                     const size = gridSize;
                     let success = false;
@@ -199,9 +182,7 @@
                                 setShapes(newShapes);
                                 success = true;
                             }
-                        } catch (e) {
-                            // console.warn("Retrying...", e);
-                        }
+                        } catch (e) {}
                     }
                     const emptyGrid = Array(size).fill(null).map(() => 
                         Array(size).fill(null).map(() => ({ state: 'empty', manualCross: false }))
@@ -259,7 +240,6 @@
             }, [grid, conflicts, gridSize, shapes, solved]);
 
             const handleCellClick = (row, col) => {
-                // Giriş ekranı varken tıklamayı engelle
                 if (solved || generating || introVisible) return;
                 const now = Date.now();
                 const timeDiff = now - lastTap.time;
@@ -331,10 +311,9 @@
             };
 
             return (
-                // Ana kapsayıcıya relative ekledik ki giriş ekranı absolute olabilsin
                 <div className="relative min-h-[100dvh] flex items-center justify-center p-2 sm:p-4 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-hidden">
                     
-                    {/* --- GİRİŞ EKRANI KATMANI --- */}
+                    {/* GİRİŞ EKRANI */}
                     {introVisible && (
                         <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-slate-900 transition-opacity duration-1000 ${introFading ? 'opacity-0' : 'opacity-100'}`}>
                             <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-center px-4 animate-pulse leading-tight">
@@ -343,7 +322,7 @@
                         </div>
                     )}
 
-                    {/* OYUN ALANI (Giriş ekranı varken görünmez/arkada kalır) */}
+                    {/* OYUN ALANI */}
                     <div className={`bg-white rounded-xl shadow-2xl p-4 sm:p-8 w-full max-w-md relative flex flex-col items-center transition-opacity duration-1000 ${introVisible ? 'opacity-0' : 'opacity-100'}`}>
                         {generating && !introVisible && (
                             <div className="absolute inset-0 bg-white/90 z-50 flex flex-col items-center justify-center rounded-xl">
@@ -355,7 +334,6 @@
                         <h1 className="text-2xl sm:text-3xl font-bold text-center mb-1 text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">Star Battle</h1>
                         <p className="text-center text-gray-500 mb-4 text-xs sm:text-sm">Yıldız koymak için çift dokun ★</p>
                         
-                        {/* Boyut Seçici */}
                         <div className="flex justify-center gap-2 mb-4 w-full">
                             {[5, 6, 7].map(s => (
                                 <button key={s} onClick={() => setGridSize(s)} disabled={solved || generating} 
@@ -367,7 +345,6 @@
                             ))}
                         </div>
 
-                        {/* Izgara */}
                         <div className="mb-6 w-full max-w-[350px]">
                             <div className="grid gap-0 border-4 border-gray-800 rounded-lg overflow-hidden bg-gray-800 shadow-xl"
                                 style={{ gridTemplateColumns: `repeat(${gridSize}, 1fr)` }}>
@@ -384,7 +361,8 @@
                                                 ${isConflict?'bg-red-300 animate-pulse':''} 
                                                 ${!solved?'active:brightness-90':''}
                                             `}>
-                                            {cell.state === 'star' && <span className="drop-shadow-sm transform scale-110">★</span>}
+                                            {/* YILDIZ RENGİ BURADA DEĞİŞTİRİLDİ: text-yellow-500 */}
+                                            {cell.state === 'star' && <span className="drop-shadow-sm transform scale-125 text-yellow-500">★</span>}
                                             {cell.state === 'cross' && <span className="text-red-500 opacity-60 text-lg">✕</span>}
                                         </div>
                                     );
@@ -392,7 +370,6 @@
                             </div>
                         </div>
 
-                        {/* Kontroller */}
                         <div className="flex gap-2 w-full max-w-[350px]">
                             <button onClick={() => { if(history.length) { setGrid(history[history.length-1]); setHistory(history.slice(0,-1)); setConflicts(checkConflicts(history[history.length-1])); setSolved(false); }}} 
                                 disabled={!history.length || solved || generating} 
