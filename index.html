@@ -1,30 +1,37 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Star Battle</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Star Battle - Ece İçin</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
         @keyframes fall {
             to { transform: translateY(110vh) rotate(720deg); }
         }
+        /* Mobil için kritik: çift dokunuşta yakınlaştırma gecikmesini önler */
+        .touch-manipulation {
+            touch-action: manipulation;
+        }
+        /* Oyunu sabit tutmak için mobilde aşağı çekerek yenilemeyi önler */
+        body {
+            overscroll-behavior-y: none;
+            background-color: #0f172a; /* slate-900 */
+        }
     </style>
 </head>
-<body class="bg-slate-900 select-none text-slate-200">
+<body class="select-none text-slate-200">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useCallback } = React;
 
-        // -- Icons --
+        // -- Simgeler --
         const RotateCcw = ({ size = 20 }) => (
             <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /></svg>
         );
@@ -46,59 +53,70 @@
             const [cellPlacementTime, setCellPlacementTime] = useState({});
             const [generating, setGenerating] = useState(true);
 
-            // -- NEW: Uniqueness Checker --
+            // -- GİRİŞ EKRANI İÇİN YENİ STATE'LER --
+            const [introVisible, setIntroVisible] = useState(true); // Giriş ekranı DOM'da var mı?
+            const [introFading, setIntroFading] = useState(false);   // Giriş ekranı soluyor mu?
+
+            // -- GİRİŞ EKRANI ZAMANLAYICISI --
+            useEffect(() => {
+                // 4.5 saniye sonra solmaya başla
+                const fadeTimer = setTimeout(() => {
+                    setIntroFading(true);
+                }, 4500);
+
+                // 5.5 saniye sonra tamamen kaldır (1 saniye solma süresi tanıdık)
+                const removeTimer = setTimeout(() => {
+                    setIntroVisible(false);
+                }, 5500);
+
+                // Temizlik fonksiyonu (bileşen erken kapanırsa hataları önler)
+                return () => {
+                    clearTimeout(fadeTimer);
+                    clearTimeout(removeTimer);
+                };
+            }, []); // Boş dizi, sadece ilk açılışta çalışmasını sağlar
+
+            // -- Benzersizlik Kontrolü --
             const countSolutions = (regionMap, size) => {
                 let solutionCount = 0;
                 const colUsed = new Array(size).fill(false);
                 const regionUsed = new Array(size).fill(false);
-                const placedStars = new Map(); // r -> c
+                const placedStars = new Map(); 
 
                 const search = (r) => {
-                    // Optimization: If we found more than 1 solution, stop searching.
-                    // The puzzle is already "ambiguous" and invalid.
                     if (solutionCount > 1) return; 
-
                     if (r === size) {
                         solutionCount++;
                         return;
                     }
-
                     for (let c = 0; c < size; c++) {
-                        // Check Constraints: Col, Region, Adjacency
                         if (colUsed[c]) continue;
-                        
                         const reg = regionMap[r][c];
                         if (regionUsed[reg]) continue;
-
                         let conflict = false;
                         if (r > 0) {
                             const prevC = placedStars.get(r - 1);
                             if (Math.abs(prevC - c) <= 1) conflict = true;
                         }
-
                         if (!conflict) {
-                            // Place Star
                             colUsed[c] = true;
                             regionUsed[reg] = true;
                             placedStars.set(r, c);
-
                             search(r + 1);
-
-                            // Backtrack
                             colUsed[c] = false;
                             regionUsed[reg] = false;
                             placedStars.delete(r);
                         }
                     }
                 };
-
                 search(0);
                 return solutionCount;
             };
 
             const generateLevel = useCallback(() => {
                 setGenerating(true);
-                // Use setTimeout to allow UI to show "Generating..." state
+                // Giriş ekranı varken arka planda oluşturma işlemini biraz geciktirebiliriz,
+                // ama şimdilik mevcut mantığı koruyalım.
                 setTimeout(() => {
                     const size = gridSize;
                     let success = false;
@@ -109,8 +127,6 @@
                         try {
                             const placedStars = new Map(); 
                             const usedCols = new Set();
-
-                            // 1. Generate a valid star layout
                             const solveLayout = (r) => {
                                 if (r === size) return true; 
                                 const validCols = [];
@@ -134,14 +150,11 @@
                                 }
                                 return false;
                             };
-
                             if (!solveLayout(0)) continue;
 
-                            // 2. Generate Regions
                             const regionMap = Array(size).fill(null).map(() => Array(size).fill(-1));
                             const newShapes = Array(size).fill(null).map(() => []);
                             const queue = [];
-
                             for (let r = 0; r < size; r++) {
                                 const c = placedStars.get(r);
                                 if (c === undefined) throw new Error("Gen failed");
@@ -149,13 +162,10 @@
                                 newShapes[r].push([r, c]);
                                 queue.push({ r, c, id: r });
                             }
-
-                            // Grow Regions
                             while (queue.length > 0) {
                                 const randIdx = Math.floor(Math.random() * queue.length);
                                 const { r, c, id } = queue.splice(randIdx, 1)[0];
                                 const neighbors = [[r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]];
-
                                 for (const [nr, nc] of neighbors) {
                                     if (nr >= 0 && nr < size && nc >= 0 && nc < size && regionMap[nr][nc] === -1) {
                                         regionMap[nr][nc] = id;
@@ -164,12 +174,9 @@
                                     }
                                 }
                             }
-
-                            // Fill remaining holes
                             for (let r = 0; r < size; r++) {
                                 for (let c = 0; c < size; c++) {
                                     if (regionMap[r][c] === -1) {
-                                        // Simple fill: assign to nearest neighbor or default to 0
                                         let filled = false;
                                         const neighbors = [[r + 1, c], [r - 1, c], [r, c + 1], [r, c - 1]];
                                         for (const [nr, nc] of neighbors) {
@@ -188,25 +195,14 @@
                                     }
                                 }
                             }
-
-                            // 3. CRITICAL: Check Uniqueness
-                            // Count how many solutions exist for this specific region map
-                            const solutions = countSolutions(regionMap, size);
-                            
-                            if (solutions === 1) {
+                            if (countSolutions(regionMap, size) === 1) {
                                 setShapes(newShapes);
                                 success = true;
-                            } else {
-                                // If 0 solutions (impossible) or >1 (ambiguous), discard and retry
-                                // console.log(`Discarded puzzle with ${solutions} solutions`);
                             }
-
                         } catch (e) {
-                            console.warn("Retrying generation...", e);
+                            // console.warn("Retrying...", e);
                         }
                     }
-
-                    // Reset Grid
                     const emptyGrid = Array(size).fill(null).map(() => 
                         Array(size).fill(null).map(() => ({ state: 'empty', manualCross: false }))
                     );
@@ -223,7 +219,6 @@
                 generateLevel();
             }, [generateLevel]);
 
-            // -- Logic Helpers --
             const checkConflicts = (testGrid) => {
                 const newConflicts = new Set();
                 const size = testGrid.length; 
@@ -249,7 +244,6 @@
 
             useEffect(() => {
                 if (grid.length === 0 || grid.length !== gridSize || solved) return;
-                
                 const currentConflicts = checkConflicts(grid);
                 if (currentConflicts.size > 0) return;
                 
@@ -265,7 +259,8 @@
             }, [grid, conflicts, gridSize, shapes, solved]);
 
             const handleCellClick = (row, col) => {
-                if (solved || generating) return;
+                // Giriş ekranı varken tıklamayı engelle
+                if (solved || generating || introVisible) return;
                 const now = Date.now();
                 const timeDiff = now - lastTap.time;
                 const isDouble = lastTap.row === row && lastTap.col === col && timeDiff < 300;
@@ -336,52 +331,86 @@
             };
 
             return (
-                <div className="min-h-screen flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 max-w-2xl w-full text-slate-900 relative">
-                        {generating && (
-                            <div className="absolute inset-0 bg-white/80 z-50 flex flex-col items-center justify-center rounded-2xl">
-                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4"></div>
-                                <p className="font-semibold text-purple-600">Generating Unique Puzzle...</p>
+                // Ana kapsayıcıya relative ekledik ki giriş ekranı absolute olabilsin
+                <div className="relative min-h-[100dvh] flex items-center justify-center p-2 sm:p-4 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 overflow-hidden">
+                    
+                    {/* --- GİRİŞ EKRANI KATMANI --- */}
+                    {introVisible && (
+                        <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-slate-900 transition-opacity duration-1000 ${introFading ? 'opacity-0' : 'opacity-100'}`}>
+                            <h1 className="text-4xl sm:text-6xl md:text-7xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 text-center px-4 animate-pulse leading-tight">
+                                ece seni çok seviyorum
+                            </h1>
+                        </div>
+                    )}
+
+                    {/* OYUN ALANI (Giriş ekranı varken görünmez/arkada kalır) */}
+                    <div className={`bg-white rounded-xl shadow-2xl p-4 sm:p-8 w-full max-w-md relative flex flex-col items-center transition-opacity duration-1000 ${introVisible ? 'opacity-0' : 'opacity-100'}`}>
+                        {generating && !introVisible && (
+                            <div className="absolute inset-0 bg-white/90 z-50 flex flex-col items-center justify-center rounded-xl">
+                                <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-purple-600 mb-4"></div>
+                                <p className="font-semibold text-purple-600">Benzersiz Seviye Oluşturuluyor...</p>
                             </div>
                         )}
                         
-                        <h1 className="text-3xl font-bold text-center mb-2 text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">Star Battle</h1>
-                        <p className="text-center text-gray-500 mb-6 text-sm">1 star per row, column, and color.</p>
+                        <h1 className="text-2xl sm:text-3xl font-bold text-center mb-1 text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">Star Battle</h1>
+                        <p className="text-center text-gray-500 mb-4 text-xs sm:text-sm">Yıldız koymak için çift dokun ★</p>
                         
-                        <div className="flex justify-center gap-2 mb-6">
+                        {/* Boyut Seçici */}
+                        <div className="flex justify-center gap-2 mb-4 w-full">
                             {[5, 6, 7].map(s => (
                                 <button key={s} onClick={() => setGridSize(s)} disabled={solved || generating} 
-                                    className={`px-4 py-2 rounded-lg font-semibold transition-all text-sm ${gridSize === s ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} ${solved?'opacity-50':''}`}>
+                                    className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all touch-manipulation
+                                    ${gridSize === s ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-100 text-gray-700 active:bg-gray-200'} 
+                                    ${solved?'opacity-50':''}`}>
                                     {s}×{s}
                                 </button>
                             ))}
                         </div>
 
-                        <div className="mb-6 flex justify-center select-none">
-                            <div className="inline-grid gap-0 border-4 border-gray-800 rounded-lg overflow-hidden bg-gray-800"
-                                style={{ gridTemplateColumns: `repeat(${gridSize}, minmax(0, 1fr))` }}>
+                        {/* Izgara */}
+                        <div className="mb-6 w-full max-w-[350px]">
+                            <div className="grid gap-0 border-4 border-gray-800 rounded-lg overflow-hidden bg-gray-800 shadow-xl"
+                                style={{ gridTemplateColumns: `repeat(${gridSize}, 1fr)` }}>
                                 {grid.length === gridSize && grid.map((row, r) => row.map((cell, c) => {
                                     const isConflict = conflicts.has(`${r},${c}`);
                                     return (
-                                        <div key={`${r}-${c}`} onMouseDown={(e) => { e.preventDefault(); handleCellClick(r, c); }}
-                                            className={`w-10 h-10 sm:w-14 sm:h-14 border border-gray-300 flex items-center justify-center text-xl font-bold cursor-pointer transition-colors duration-150 ${getShapeColor(r, c)} ${getShapeBorder(r, c)} border-gray-700 ${isConflict?'bg-red-300 animate-pulse':''} ${!solved?'hover:brightness-95':''}`}>
-                                            {cell.state === 'star' && '★'}
-                                            {cell.state === 'cross' && <span className="text-red-500 opacity-60 text-sm">✕</span>}
+                                        <div key={`${r}-${c}`} 
+                                            onPointerDown={(e) => { e.preventDefault(); handleCellClick(r, c); }}
+                                            className={`
+                                                aspect-square w-full
+                                                border border-gray-300 flex items-center justify-center 
+                                                text-xl sm:text-2xl font-bold cursor-pointer transition-colors duration-150 touch-manipulation select-none
+                                                ${getShapeColor(r, c)} ${getShapeBorder(r, c)} border-gray-700 
+                                                ${isConflict?'bg-red-300 animate-pulse':''} 
+                                                ${!solved?'active:brightness-90':''}
+                                            `}>
+                                            {cell.state === 'star' && <span className="drop-shadow-sm transform scale-110">★</span>}
+                                            {cell.state === 'cross' && <span className="text-red-500 opacity-60 text-lg">✕</span>}
                                         </div>
                                     );
                                 }))}
                             </div>
                         </div>
 
-                        <div className="flex gap-3 justify-center">
+                        {/* Kontroller */}
+                        <div className="flex gap-2 w-full max-w-[350px]">
                             <button onClick={() => { if(history.length) { setGrid(history[history.length-1]); setHistory(history.slice(0,-1)); setConflicts(checkConflicts(history[history.length-1])); setSolved(false); }}} 
-                                disabled={!history.length || solved || generating} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg disabled:bg-gray-200 disabled:text-gray-400"><RotateCcw size={18}/>Undo</button>
+                                disabled={!history.length || solved || generating} 
+                                className="flex-1 flex items-center justify-center gap-1 py-3 bg-blue-600 text-white rounded-lg disabled:bg-gray-200 disabled:text-gray-400 touch-manipulation active:scale-95 transition-transform">
+                                <RotateCcw size={18}/><span className="text-sm font-semibold">Geri Al</span>
+                            </button>
                             <button onClick={() => { setGrid(grid.map(r => r.map(() => ({state:'empty', manualCross:false})))); setHistory([]); setConflicts(new Set()); setSolved(false); }} 
-                                disabled={solved || generating} className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg disabled:bg-gray-200 disabled:text-gray-400"><Trash2 size={18}/>Clear</button>
-                            <button onClick={generateLevel} disabled={generating} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-emerald-400"><Plus size={18}/>New</button>
+                                disabled={solved || generating} 
+                                className="flex-1 flex items-center justify-center gap-1 py-3 bg-orange-600 text-white rounded-lg disabled:bg-gray-200 disabled:text-gray-400 touch-manipulation active:scale-95 transition-transform">
+                                <Trash2 size={18}/><span className="text-sm font-semibold">Temizle</span>
+                            </button>
+                            <button onClick={generateLevel} disabled={generating} 
+                                className="flex-1 flex items-center justify-center gap-1 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:bg-emerald-400 touch-manipulation active:scale-95 transition-transform shadow-md">
+                                <Plus size={18}/><span className="text-sm font-semibold">Yeni</span>
+                            </button>
                         </div>
 
-                        {solved && <div className="mt-6 text-center animate-bounce text-2xl font-bold text-green-600">Puzzle Solved!</div>}
+                        {solved && <div className="mt-4 text-center animate-bounce text-2xl font-bold text-green-600 drop-shadow-sm">Bulmaca Çözüldü!</div>}
                         {solved && <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">{[...Array(50)].map((_, i) => <div key={i} className="absolute text-2xl" style={{left: `${Math.random()*100}%`, top: '-50px', animation: `fall ${2+Math.random()*3}s linear ${Math.random()*2}s infinite`}}>★</div>)}</div>}
                     </div>
                 </div>
